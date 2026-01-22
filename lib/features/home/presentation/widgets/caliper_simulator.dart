@@ -41,7 +41,7 @@ class _CaliperSimulatorState extends State<CaliperSimulator> {
       children: [
         // Digital Readout (Didactic aid)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
             color: Colors.black87,
             borderRadius: BorderRadius.circular(8),
