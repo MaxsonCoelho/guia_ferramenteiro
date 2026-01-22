@@ -143,77 +143,133 @@ class MainScalePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paintBody = Paint()
-      ..color = AppTheme.brushedMetal
+    // 1. Realistic metallic gradient for body
+    final Rect rulerRect = Rect.fromLTWH(50, 100, maxMm * pixelsPerMm + 100, 60);
+    final Paint bodyPaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFFE0E0E0), // Light Silver
+          Color(0xFFF5F5F5), // Highlight
+          Color(0xFFBDBDBD), // Darker Silver
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(rulerRect)
       ..style = PaintingStyle.fill;
-      
-    final paintBorder = Paint()
-      ..color = const Color(0xFF5C5C5C)
+
+    final Paint borderPaint = Paint()
+      ..color = const Color(0xFF757575)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final paintMarks = Paint()
+    final Paint marksPaint = Paint()
       ..color = Colors.black87
       ..strokeWidth = 1.0;
 
-    final textPainter = TextPainter(
-      textDirection: TextDirection.ltr,
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    double rulerY = 100.0;
+    double rulerHeight = 60.0;
+    double startX = 50.0;
+
+    // --- Draw Main Ruler Body ---
+    canvas.drawRect(rulerRect, bodyPaint);
+    canvas.drawRect(rulerRect, borderPaint);
+
+    // --- Draw Matte Strip for Numbers (Common in real calipers) ---
+    // A slightly darker, non-reflective strip where the graduations are
+    final Rect matteStrip = Rect.fromLTWH(startX, rulerY + 30, rulerRect.width, 30);
+    final Paint mattePaint = Paint()
+      ..color = const Color(0xFFEEEEEE).withOpacity(0.5)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(matteStrip, mattePaint);
+    canvas.drawLine(
+      Offset(startX, rulerY + 30),
+      Offset(startX + rulerRect.width, rulerY + 30),
+      Paint()..color = Colors.black12..strokeWidth = 0.5,
     );
 
-    double rulerHeight = 60.0;
-    double rulerY = 100.0; // Vertical position of the ruler
-    double startX = 50.0; // Start drawing after some padding
-
-    // 1. Draw Main Body (Ruler)
-    Rect rulerRect = Rect.fromLTWH(startX, rulerY, maxMm * pixelsPerMm + 100, rulerHeight);
-    canvas.drawRect(rulerRect, paintBody);
-    canvas.drawRect(rulerRect, paintBorder);
-
-    // 2. Draw Fixed Jaw (Left side)
+    // --- Draw Fixed Jaw (External) - Left Side ---
+    // Realistic shape: straight inner edge, curved outer edge
     Path fixedJaw = Path();
     fixedJaw.moveTo(startX, rulerY);
-    fixedJaw.lineTo(startX, rulerY + 150); // Downward jaw
-    fixedJaw.lineTo(startX + 40, rulerY + 150);
-    fixedJaw.lineTo(startX + 40, rulerY + rulerHeight);
+    // Inner edge (straight down)
+    fixedJaw.lineTo(startX + 40, rulerY); // Start slightly right
+    fixedJaw.lineTo(startX + 40, rulerY + 150); // Down to tip
+    // Tip detail
+    fixedJaw.lineTo(startX + 35, rulerY + 152); // Tiny blunt tip
+    // Outer edge (curved up)
+    fixedJaw.quadraticBezierTo(
+      startX, rulerY + 100, // Control point
+      startX, rulerY // End point
+    );
     fixedJaw.close();
-    
-    // Upper jaw (for internal measurement)
+
+    // Gradient for Jaw
+    final Paint jawPaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFFD6D6D6), Color(0xFFF0F0F0), Color(0xFFC0C0C0)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(fixedJaw.getBounds());
+
+    canvas.drawPath(fixedJaw, jawPaint);
+    canvas.drawPath(fixedJaw, borderPaint);
+
+    // --- Draw Fixed Jaw (Internal) - Top Side ---
     Path fixedUpperJaw = Path();
-    fixedUpperJaw.moveTo(startX, rulerY);
-    fixedUpperJaw.lineTo(startX, rulerY - 50);
-    fixedUpperJaw.lineTo(startX + 20, rulerY - 50);
-    fixedUpperJaw.lineTo(startX + 30, rulerY);
+    fixedUpperJaw.moveTo(startX + 10, rulerY);
+    // Inner edge (straight up)
+    fixedUpperJaw.lineTo(startX + 40, rulerY);
+    fixedUpperJaw.lineTo(startX + 40, rulerY - 45); // Up to tip
+    // Tip
+    fixedUpperJaw.quadraticBezierTo(
+      startX + 42, rulerY - 50,
+      startX + 35, rulerY - 50
+    );
+    // Outer edge (curved down)
+    fixedUpperJaw.quadraticBezierTo(
+      startX + 10, rulerY - 25,
+      startX + 10, rulerY
+    );
     fixedUpperJaw.close();
 
-    canvas.drawPath(fixedJaw, paintBody);
-    canvas.drawPath(fixedJaw, paintBorder);
-    canvas.drawPath(fixedUpperJaw, paintBody);
-    canvas.drawPath(fixedUpperJaw, paintBorder);
+    canvas.drawPath(fixedUpperJaw, jawPaint);
+    canvas.drawPath(fixedUpperJaw, borderPaint);
 
-    // 3. Draw Scale Marks
-    // Scale starts at startX + 40 (where the jaws meet at 0)
-    double zeroX = startX + 40;
-    
+    // --- Draw Scale Marks ---
+    double zeroX = startX + 40; // Scale zero point matches jaw inner edge
     for (int i = 0; i <= maxMm; i++) {
       double x = zeroX + (i * pixelsPerMm);
       double lineHeight;
       
       if (i % 10 == 0) {
-        lineHeight = 20.0; // cm mark
+        lineHeight = 20.0;
         // Draw Number
         textPainter.text = TextSpan(
           text: (i ~/ 10).toString(),
-          style: const TextStyle(color: Colors.black, fontSize: 14, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.black87, 
+            fontSize: 12, 
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Roboto', // Cleaner font
+          ),
         );
         textPainter.layout();
-        textPainter.paint(canvas, Offset(x - (textPainter.width / 2), rulerY + 25));
+        // Position number centered above the tick
+        textPainter.paint(canvas, Offset(x - (textPainter.width / 2), rulerY + 32));
       } else if (i % 5 == 0) {
-        lineHeight = 15.0; // 5mm mark
+        lineHeight = 15.0;
       } else {
-        lineHeight = 10.0; // 1mm mark
+        lineHeight = 10.0;
       }
       
-      canvas.drawLine(Offset(x, rulerY + rulerHeight), Offset(x, rulerY + rulerHeight - lineHeight), paintMarks);
+      // Draw ticks extending from bottom edge up
+      canvas.drawLine(
+        Offset(x, rulerY + rulerHeight), 
+        Offset(x, rulerY + rulerHeight - lineHeight), 
+        marksPaint
+      );
     }
   }
 
@@ -228,74 +284,164 @@ class VernierScalePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paintBody = Paint()
-      ..color = AppTheme.silver // Lighter metal for moving part
-      ..style = PaintingStyle.fill;
-      
-    final paintBorder = Paint()
-      ..color = const Color(0xFF5C5C5C)
+    // Constants
+    double rulerHeight = 60.0;
+    double rulerY = 100.0;
+    
+    // Dynamic Width Calculation
+    double vernierStepMm = 19.0 / 20.0;
+    double scalePixelWidth = 20 * vernierStepMm * pixelsPerMm;
+    double headWidth = scalePixelWidth + 80.0; 
+    
+    final Paint borderPaint = Paint()
+      ..color = const Color(0xFF757575)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final paintMarks = Paint()
+    final Paint marksPaint = Paint()
       ..color = Colors.black87
       ..strokeWidth = 1.0;
+      
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
 
-    final textPainter = TextPainter(
-      textDirection: TextDirection.ltr,
-    );
+    // --- 1. Draw Depth Gauge (The tail) ---
+    // Extends to the right from the center of the head
+    double tailLength = 200.0; // Visual length
+    Rect tailRect = Rect.fromLTWH(headWidth, rulerY + (rulerHeight/2) - 2, tailLength, 4);
+    final Paint tailPaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFFB0B0B0), Color(0xFFE0E0E0), Color(0xFFB0B0B0)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(tailRect);
+    
+    canvas.drawRect(tailRect, tailPaint);
+    canvas.drawRect(tailRect, borderPaint);
 
-    double rulerHeight = 60.0;
-    double rulerY = 100.0; // Must match MainScalePainter
-    
-    // Calculate dynamic head width based on scale size
-    // 20 divisions * 0.95mm/division * pixelsPerMm
-    double vernierStepMm = 19.0 / 20.0;
-    double scalePixelWidth = 20 * vernierStepMm * pixelsPerMm;
-    
-    // Ensure head is wide enough for the scale plus padding
-    double headWidth = scalePixelWidth + 80.0; 
-    
-    // 1. Draw Moving Head Body
-    // It wraps around the ruler
-    // We'll draw a shape that looks like the sliding head
+    // --- 2. Draw Moving Head (Slider) ---
     Path headPath = Path();
-    // Start at top-left of the slider on the ruler
-    headPath.moveTo(0, rulerY); 
-    // Upper jaw (internal)
-    headPath.lineTo(10, rulerY - 50);
-    headPath.lineTo(30, rulerY - 50);
-    headPath.lineTo(40, rulerY);
-    // Continue right along top of ruler
+    
+    // Start top-left on ruler
+    headPath.moveTo(0, rulerY);
+    
+    // Internal Jaw (Top)
+    headPath.lineTo(0, rulerY - 20); // Base of jaw
+    // Curved outer edge
+    headPath.quadraticBezierTo(
+      0, rulerY - 45,
+      10, rulerY - 50 // Tip
+    );
+    // Tip detail
+    headPath.lineTo(15, rulerY - 50);
+    // Inner edge (straight) - This is the measuring face
+    headPath.lineTo(15, rulerY); // Back to ruler line
+    
+    // Top Edge over Ruler
     headPath.lineTo(headWidth, rulerY);
-    // Down to bottom of ruler
+    
+    // Right Edge
     headPath.lineTo(headWidth, rulerY + rulerHeight);
-    // The vernier scale plate (extends down)
-    headPath.lineTo(headWidth - 20, rulerY + rulerHeight + 40); 
-    headPath.lineTo(20, rulerY + rulerHeight + 40);
-    // The moving jaw (external)
-    headPath.lineTo(20, rulerY + 150);
+    
+    // Bottom Section (Vernier Scale Plate)
+    // Beveled edge for scale
+    headPath.lineTo(headWidth - 10, rulerY + rulerHeight + 35);
+    // Bottom edge
+    headPath.lineTo(10, rulerY + rulerHeight + 35);
+    
+    // External Jaw (Bottom)
+    // Inner edge (measuring face)
+    headPath.lineTo(10, rulerY + 150); // Tip
+    // Tip detail
     headPath.lineTo(0, rulerY + 150);
+    // Outer edge (curved)
+    headPath.quadraticBezierTo(
+      -10, rulerY + 100,
+      -5, rulerY + rulerHeight // Back to ruler body
+    );
+    // Close shape
+    headPath.lineTo(0, rulerY + rulerHeight); // Join
     headPath.close();
 
-    // Shadow for depth
-    canvas.drawShadow(headPath, Colors.black45, 4.0, false);
-    
-    canvas.drawPath(headPath, paintBody);
-    canvas.drawPath(headPath, paintBorder);
+    // Metallic Gradient for Head
+    final Paint headPaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFFD0D0D0), 
+          Color(0xFFF8F8F8), 
+          Color(0xFFC8C8C8)
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(headPath.getBounds());
 
-    // 2. Draw Vernier Scale Marks
-    // Standard 0.05mm vernier: 20 divisions spanning 19mm or 39mm.
-    // Let's use 19mm span for 20 divisions (standard compact).
-    // So total length = 19mm.
-    // Each division = 19/20 = 0.95mm on the main scale.
-    // But here we are drawing on the moving part, so we draw them relative to the 0 of the vernier.
-    // The 0 of the vernier aligns with the 0 of the main scale when closed.
+    // Shadow
+    canvas.drawShadow(headPath, Colors.black54, 4.0, true);
     
-    double vernierY = rulerY + rulerHeight; // Start marks at bottom of main ruler
+    canvas.drawPath(headPath, headPaint);
+    canvas.drawPath(headPath, borderPaint);
+
+    // --- 3. Draw Locking Screw (Top) ---
+    // A small knurled screw on top
+    double screwX = headWidth / 2;
+    double screwY = rulerY - 8;
+    Rect screwHead = Rect.fromCenter(center: Offset(screwX, screwY), width: 12, height: 10);
+    
+    // Screw Thread/Post
+    canvas.drawRect(
+      Rect.fromCenter(center: Offset(screwX, rulerY), width: 6, height: 10), 
+      Paint()..color = Colors.grey[400]!
+    );
+    
+    // Screw Head
+    canvas.drawOval(screwHead, Paint()..color = const Color(0xFFE0E0E0));
+    canvas.drawOval(screwHead, Paint()..style=PaintingStyle.stroke..color=Colors.grey[700]!);
+    // Knurling lines
+    for(int k=0; k<5; k++) {
+      double kx = screwHead.left + 2 + k*2;
+      canvas.drawLine(
+        Offset(kx, screwHead.top+2),
+        Offset(kx, screwHead.bottom-2),
+        Paint()..color=Colors.grey[500]!
+      );
+    }
+
+    // --- 4. Draw Thumb Grip (Bottom Right) ---
+    // A textured area for the thumb
+    Rect thumbRect = Rect.fromLTWH(headWidth - 45, rulerY + rulerHeight + 5, 35, 20);
+    // Base shape
+    RRect thumbRRect = RRect.fromRectAndRadius(thumbRect, const Radius.circular(4));
+    canvas.drawRRect(thumbRRect, Paint()..color = const Color(0xFFD0D0D0));
+    canvas.drawRRect(thumbRRect, Paint()..style=PaintingStyle.stroke..color=Colors.grey);
+    // Ribs
+    for(int r=0; r<8; r++) {
+      double rx = thumbRect.left + 4 + r*4;
+      canvas.drawLine(
+        Offset(rx, thumbRect.top),
+        Offset(rx, thumbRect.bottom),
+        Paint()..color=Colors.grey[600]!..strokeWidth=1.5
+      );
+    }
+
+    // --- 5. Draw Window/Bevel for Scale ---
+    // The vernier scale sits on a beveled edge
+    double bevelHeight = 35.0;
+    double bevelY = rulerY + rulerHeight;
+    Path bevelPath = Path();
+    bevelPath.moveTo(10, bevelY);
+    bevelPath.lineTo(headWidth - 10, bevelY);
+    bevelPath.lineTo(headWidth - 10, bevelY + bevelHeight);
+    bevelPath.lineTo(10, bevelY + bevelHeight);
+    bevelPath.close();
+    
+    // Matte finish for reading area
+    canvas.drawPath(bevelPath, Paint()..color = const Color(0xFFF5F5F5));
+    canvas.drawPath(bevelPath, borderPaint);
+
+    // --- 6. Draw Vernier Scale Marks ---
+    double vernierY = bevelY; 
     
     for (int i = 0; i <= 20; i++) {
-      double x = i * vernierStepMm * pixelsPerMm;
+      double x = 25 + (i * vernierStepMm * pixelsPerMm); // Start offset 25 relative to head
       double lineHeight;
       
       if (i % 2 == 0) {
@@ -304,7 +450,11 @@ class VernierScalePainter extends CustomPainter {
         String label = (i ~/ 2).toString();
         textPainter.text = TextSpan(
           text: label,
-          style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.black87, 
+            fontSize: 9, 
+            fontWeight: FontWeight.w700
+          ),
         );
         textPainter.layout();
         textPainter.paint(canvas, Offset(x - (textPainter.width / 2), vernierY + 18));
@@ -313,35 +463,21 @@ class VernierScalePainter extends CustomPainter {
         lineHeight = 10.0;
       }
       
-      canvas.drawLine(Offset(x, vernierY), Offset(x, vernierY + lineHeight), paintMarks);
+      canvas.drawLine(Offset(x, vernierY), Offset(x, vernierY + lineHeight), marksPaint);
     }
     
     // Draw "0.05mm" text
-    // Positioned to the right of the scale to avoid overlapping
     textPainter.text = const TextSpan(
       text: '0.05mm',
       style: TextStyle(
         color: Colors.black, 
-        fontSize: 10, 
+        fontSize: 9, 
         fontStyle: FontStyle.italic,
         fontWeight: FontWeight.w600
       ),
     );
     textPainter.layout();
-    textPainter.paint(canvas, Offset(scalePixelWidth + 15, vernierY + 15));
-    
-    // Draw Thumb Rest (Texture)
-    final paintThumb = Paint()
-      ..color = Colors.black12
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-      
-    // Position thumb rest at the end of the head
-    double thumbStart = headWidth - 40.0;
-    for(int i=0; i<6; i++) {
-      double tx = thumbStart + (i * 4);
-      canvas.drawLine(Offset(tx, rulerY + rulerHeight + 10), Offset(tx, rulerY + rulerHeight + 30), paintThumb);
-    }
+    textPainter.paint(canvas, Offset(headWidth - 50, vernierY + 15));
   }
 
   @override
