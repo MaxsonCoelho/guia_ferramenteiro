@@ -14,14 +14,24 @@ class _CaliperSimulatorState extends State<CaliperSimulator> {
   // Maximum measurement (15cm)
   final double _maxMeasurement = 150.0;
   // Scale factor (pixels per mm)
-  // Adjust this to make the caliper larger/smaller on screen
-  final double _pixelsPerMm = 4.0; 
+  // Increased to 14.0 to make 0.05mm intervals visually distinguishable (0.05mm * 14 = 0.7px diff)
+  // This "Zoom" is essential for didactic purposes on mobile screens
+  final double _pixelsPerMm = 14.0; 
 
   void _updateMeasurement(double delta) {
     setState(() {
       // Convert drag delta (pixels) to measurement delta (mm)
       double mmDelta = delta / _pixelsPerMm;
       _measurement = (_measurement + mmDelta).clamp(0.0, _maxMeasurement);
+    });
+  }
+
+  void _snapMeasurement() {
+    setState(() {
+      // Snap to nearest 0.05mm for didactic clarity
+      // This helps the user "find" the alignment
+      const double step = 0.05;
+      _measurement = ((_measurement / step).round() * step).clamp(0.0, _maxMeasurement);
     });
   }
 
@@ -68,6 +78,7 @@ class _CaliperSimulatorState extends State<CaliperSimulator> {
           child: Center(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
               child: SizedBox(
                 height: 300,
                 // Width = margin + ruler length + margin
@@ -91,11 +102,14 @@ class _CaliperSimulatorState extends State<CaliperSimulator> {
                         onHorizontalDragUpdate: (details) {
                           _updateMeasurement(details.delta.dx);
                         },
+                        onHorizontalDragEnd: (details) {
+                          _snapMeasurement();
+                        },
                         child: CustomPaint(
                           painter: VernierScalePainter(
                             pixelsPerMm: _pixelsPerMm,
                           ),
-                          size: const Size(250, 300), // Fixed size for the moving head
+                          size: const Size(400, 300), // Increased size for the moving head (dynamic width ~350)
                         ),
                       ),
                     ),
@@ -233,14 +247,17 @@ class VernierScalePainter extends CustomPainter {
 
     double rulerHeight = 60.0;
     double rulerY = 100.0; // Must match MainScalePainter
-    double headWidth = 200.0;
+    
+    // Calculate dynamic head width based on scale size
+    // 20 divisions * 0.95mm/division * pixelsPerMm
+    double vernierStepMm = 19.0 / 20.0;
+    double scalePixelWidth = 20 * vernierStepMm * pixelsPerMm;
+    
+    // Ensure head is wide enough for the scale plus padding
+    double headWidth = scalePixelWidth + 80.0; 
     
     // 1. Draw Moving Head Body
     // It wraps around the ruler
-    Rect headRect = Rect.fromLTWH(0, rulerY - 5, headWidth, rulerHeight + 10);
-    // Cut out the window for the ruler? Or just draw over top/bottom?
-    // Let's draw the Vernier scale plate below the main ruler edge
-    
     // We'll draw a shape that looks like the sliding head
     Path headPath = Path();
     // Start at top-left of the slider on the ruler
@@ -277,11 +294,6 @@ class VernierScalePainter extends CustomPainter {
     
     double vernierY = rulerY + rulerHeight; // Start marks at bottom of main ruler
     
-    // We need 20 divisions.
-    // Length in mm on scale = 19mm.
-    // Step in mm = 19 / 20 = 0.95mm.
-    double vernierStepMm = 19.0 / 20.0;
-    
     for (int i = 0; i <= 20; i++) {
       double x = i * vernierStepMm * pixelsPerMm;
       double lineHeight;
@@ -305,12 +317,18 @@ class VernierScalePainter extends CustomPainter {
     }
     
     // Draw "0.05mm" text
+    // Positioned to the right of the scale to avoid overlapping
     textPainter.text = const TextSpan(
       text: '0.05mm',
-      style: TextStyle(color: Colors.black, fontSize: 10, fontStyle: FontStyle.italic),
+      style: TextStyle(
+        color: Colors.black, 
+        fontSize: 10, 
+        fontStyle: FontStyle.italic,
+        fontWeight: FontWeight.w600
+      ),
     );
     textPainter.layout();
-    textPainter.paint(canvas, Offset(140, vernierY + 15));
+    textPainter.paint(canvas, Offset(scalePixelWidth + 15, vernierY + 15));
     
     // Draw Thumb Rest (Texture)
     final paintThumb = Paint()
@@ -318,8 +336,10 @@ class VernierScalePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
       
-    for(int i=0; i<10; i++) {
-      double tx = 150.0 + (i * 4);
+    // Position thumb rest at the end of the head
+    double thumbStart = headWidth - 40.0;
+    for(int i=0; i<6; i++) {
+      double tx = thumbStart + (i * 4);
       canvas.drawLine(Offset(tx, rulerY + rulerHeight + 10), Offset(tx, rulerY + rulerHeight + 30), paintThumb);
     }
   }
